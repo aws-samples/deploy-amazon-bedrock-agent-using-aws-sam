@@ -1,0 +1,331 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+    Sample SAM Template for Amazon Bedrock Agent with knowledgebase, tools, and gaurdrails
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+  OpenSearchLayer:
+    Type: String
+
+  KnowledgeBaseBucketArn:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 180
+    MemorySize: 128
+    Tracing: Active
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
+        POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
+  Api:
+    TracingEnabled: true
+
+Resources:
+  AmazonBedrockExecutionRoleKnowledgeBase:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Description: A role for the Advisor agent
+      Path: /service-role/
+      Policies:
+        - PolicyName: BedrockModelAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: '*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "${KnowledgeBaseBucketArn}"
+                  - !Sub "${KnowledgeBaseBucketArn}/*"
+        - PolicyName: OpenSearchServerlessAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                  - aoss:DashboardAccessAll
+                Resource:
+                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:*"
+      RoleName: !Sub "AmazonBedrockExecutionRoleForAgents_KB_${Environment}"
+
+  KBSecurityPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: !Sub "kb-security-policy-${Environment}"
+      Description: A security policy for the knowledgebase
+      Type: encryption
+      Policy: !Sub |
+        {"Rules":[{"ResourceType":"collection","Resource":["collection/${Environment}"]}],"AWSOwnedKey":true}
+
+  KBNetworkPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: !Sub "kb-network-policy-${Environment}"
+      Description: Network policy for the knowledgebase
+      Type: network
+      Policy: !Sub |
+        [
+          {
+            "Rules": [
+              {
+                "Resource": [
+                  "collection/${Environment}"
+                ],
+                "ResourceType": "dashboard"
+              },
+              {
+                "Resource": [
+                  "collection/${Environment}"
+                ],
+                "ResourceType": "collection"
+              }
+            ],
+            "AllowFromPublic": true
+          }
+        ]
+
+  KBDataAccessPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    Properties:
+      Name: !Sub "kb-data-access-policy-${Environment}"
+      Description: Data access policy for the knowledgebase
+      Policy: !Sub |
+        [
+          {
+            "Rules": [
+              {
+                "Resource": [
+                  "index/${Environment}/*"
+                ],
+                "Permission": [
+                  "aoss:CreateIndex",
+                  "aoss:DeleteIndex",
+                  "aoss:UpdateIndex",
+                  "aoss:DescribeIndex",
+                  "aoss:ReadDocument",
+                  "aoss:WriteDocument"
+                ],
+                "ResourceType": "index"
+              },
+              {
+                "Resource": [
+                  "collection/${Environment}"
+                ],
+                "Permission": [
+                  "aoss:CreateCollectionItems",
+                  "aoss:DeleteCollectionItems",
+                  "aoss:UpdateCollectionItems",
+                  "aoss:DescribeCollectionItems"
+                ],
+                "ResourceType": "collection"
+              }
+            ],
+            "Principal": [
+              "${AmazonBedrockExecutionRoleKnowledgeBase.Arn}"
+            ]
+          }
+        ]
+      Type: data
+
+  KBCreateIndexPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    Properties:
+      Name: !Sub "kb-create-index-policy-${Environment}"
+      Description: Create index policy for the knowledgebase
+      Policy: !Sub |
+        [
+          {
+            "Rules": [
+              {
+                "Resource": [
+                  "index/${Environment}/*"
+                ],
+                "Permission": [
+                  "aoss:CreateIndex",
+                  "aoss:DeleteIndex",
+                  "aoss:UpdateIndex",
+                  "aoss:DescribeIndex",
+                  "aoss:ReadDocument",
+                  "aoss:WriteDocument"
+                ],
+                "ResourceType": "index"
+              },
+              {
+                "Resource": [
+                  "collection/${Environment}"
+                ],
+                "Permission": [
+                  "aoss:CreateCollectionItems",
+                  "aoss:DeleteCollectionItems",
+                  "aoss:UpdateCollectionItems",
+                  "aoss:DescribeCollectionItems"
+                ],
+                "ResourceType": "collection"
+              }
+            ],
+            "Principal": [
+              "${CreateOSSIndexForKnoweledgebaseRole.Arn}"
+            ]
+          }
+        ]
+      Type: data
+
+  KnowledgeBaseSearchCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    DependsOn:
+      - KBSecurityPolicy
+      - KBNetworkPolicy
+      - KBDataAccessPolicy
+    Properties:
+      Name: !Ref Environment
+      Description: An opensearch cluster for the KB
+      Type: VECTORSEARCH
+
+  CreateOSSIndexForKnoweledgebaseRole:
+    Type: AWS::IAM::Role
+    Description: deployment role for creating opensearch index for knowledgebase
+    Properties:
+      RoleName: !Sub "create_oss_index_${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: OpenSearchServerlessAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                  - aoss:DashboardAccessAll
+                Resource:
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${Environment}"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${Environment}/*"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${Environment}"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${Environment}/*"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${KnowledgeBaseSearchCollection.Id}"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${KnowledgeBaseSearchCollection.Id}/*"
+                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/*"
+                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/{KnowledgeBaseSearchCollection.Id}/*"
+#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/{KnowledgeBaseSearchCollection.Id}"
+
+
+  CreateOSSIndexForKnoweledgebaseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Creates an index in the opensearch collection for the knowledgebase to use
+      Handler: app.lambda_handler
+      Role: !GetAtt CreateOSSIndexForKnoweledgebaseRole.Arn
+      Layers:
+        - !Ref OpenSearchLayer
+      CodeUri: functions/oas_index_custom_resource_handler/
+
+  OpensearchIndex:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn:
+      - KBCreateIndexPolicy
+    Properties:
+      ServiceTimeout: 180
+      ServiceToken: !GetAtt CreateOSSIndexForKnoweledgebaseFunction.Arn
+      os_url: !GetAtt KnowledgeBaseSearchCollection.CollectionEndpoint
+      index_name: !Ref Environment
+
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DependsOn:
+      - OpensearchIndex
+      - AmazonBedrockExecutionRoleKnowledgeBase
+    Properties:
+      Name: !Sub "knowledgebase-agents-with-sam-${AWS::AccountId}-${AWS::Region}-${Environment}"
+      Description: A knowledgebase for the agent
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v1"
+      RoleArn: !GetAtt AmazonBedrockExecutionRoleKnowledgeBase.Arn
+      StorageConfiguration:
+        Type: OPENSEARCH_SERVERLESS
+        OpensearchServerlessConfiguration:
+          CollectionArn: !GetAtt KnowledgeBaseSearchCollection.Arn
+          FieldMapping:
+            MetadataField: "metadata"
+            TextField: "text"
+            VectorField: "vector"
+          VectorIndexName: !Ref Environment
+
+  DataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      DataDeletionPolicy: DELETE
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !Ref KnowledgeBaseBucketArn
+      Description: Source data for the knowledgebase
+      KnowledgeBaseId: !Ref KnowledgeBase
+      Name: !Ref Environment
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: SEMANTIC
+          SemanticChunkingConfiguration:
+            BreakpointPercentileThreshold: 60
+            BufferSize: 1
+            MaxTokens: 1000
+
+
+
+Outputs:
+  OpenSearchDomainEndpoint:
+    Description: OpenSearch endpoint URL
+    Value: !GetAtt KnowledgeBaseSearchCollection.CollectionEndpoint
+
+  KnowledgeBaseArn:
+    Description: Knowledgebase ARN
+    Value: !GetAtt KnowledgeBase.KnowledgeBaseArn
+
+  KnowledgeBaseId:
+    Description: Knowledgebase ID
+    Value: !Ref KnowledgeBase
+
+  DataSourceId:
+    Description: Datasource ID
+    Value: !Ref DataSource

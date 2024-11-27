@@ -1,0 +1,121 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Amazon Bedrock Agent
+
+  Sample SAM Template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+  DynamoDBTable:
+    Type: String
+
+  FormsIngestionBucketArn:
+    Type: String
+
+  FormsIngestionBucketName:
+    Type: String
+
+  ModelLayer:
+    Type: String
+
+  PowertoolsLayer:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 128
+    Tracing: Active
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
+        POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
+  Api:
+    TracingEnabled: true
+
+Resources:
+  FormsIngestionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:PutItem
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoDBTable}"
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "${FormsIngestionBucketArn}"
+                  - !Sub "${FormsIngestionBucketArn}/*"
+        - PolicyName: TextractAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "textract:StartDocumentAnalysis"
+                  - "textract:GetDocumentAnalysis"
+                Resource:
+                  - "*"
+
+#  LambdaInvokePermission:
+#    Type: 'AWS::Lambda::Permission'
+#    Properties:
+#      FunctionName: !Ref FormsIngestionHandler
+#      Action: 'lambda:InvokeFunction'
+#      Principal: 's3.amazonaws.com'
+#      SourceAccount: !Sub ${AWS::AccountId}
+#      SourceArn: !Ref FormsIngestionBucketArn
+
+  FormsIngestionHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt FormsIngestionRole.Arn
+      CodeUri: functions/ingest/
+      Handler: app.lambda_handler
+#      Events:
+#        FormUploadEvent:
+#          Type: S3
+#          Properties:
+#            Bucket: !Ref FormsIngestionBucketName
+#            Events: "s3:ObjectCreated:*"
+      Layers:
+        - !Ref ModelLayer
+        - !Ref PowertoolsLayer
+      Environment:
+        Variables:
+          DDB_TABLE: !Ref DynamoDBTable
+          FORMS_INGEST_BUCKET: !Ref FormsIngestionBucketName

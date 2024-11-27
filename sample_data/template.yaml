@@ -1,0 +1,112 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Sample data
+
+  Deploys sample data into the agents demo
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+  TableName:
+    Type: String
+
+  BucketName:
+    Type: String
+
+  BucketArn:
+    Type: String
+
+  ModelLayer:
+    Type: String
+
+  AgentId:
+    Type: String
+
+  AgentArn:
+    Type: String
+
+  DataSourceId:
+    Type: String
+
+  KnowledgeBaseId:
+    Type: String
+
+  KnowledgeBaseArn:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 128
+    Tracing: Active
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+  Api:
+    TracingEnabled: true
+
+Resources:
+  DeploySampleDataRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:PutItem
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}"
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:PutLifecycleConfiguration
+                Resource:
+                  - !Sub "${BucketArn}"
+                  - !Sub "${BucketArn}/*"
+
+  SampleDataDeployerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Function that deploys sample data into the application
+      Handler: app.lambda_handler
+      Role: !GetAtt DeploySampleDataRole.Arn
+      Layers:
+        - !Ref ModelLayer
+      CodeUri: functions/sample_data_deployment/
+
+  SampleData:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceTimeout: 90
+      ServiceToken: !GetAtt SampleDataDeployerFunction.Arn
+      s3_bucket: !Ref BucketName
+      table_name: !Ref TableName
+      datasource_id: !Ref DataSourceId
+      agent_id: !Ref AgentId
+      kb_id: !Ref KnowledgeBaseId

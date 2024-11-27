@@ -1,0 +1,69 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+#AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Amazon Bedrock Agent
+
+  Sample SAM Template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+Resources:
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  KnowledgeBaseBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "knowledgebase-agents-with-sam-${AWS::AccountId}-${AWS::Region}-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  IngestFormsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ingest-forms-${AWS::AccountId}-${AWS::Region}-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+Outputs:
+  DynamoDBTable:
+    Description: Table name for the dynamodb table
+    Value: !Ref DynamoDBTable
+
+  KnowledgeBaseBucketName:
+    Description: Knowledgebase Ingestion Bucket
+    Value: !Ref KnowledgeBaseBucket
+
+  KnowledgeBaseBucketArn:
+    Description: Knowledgebase Ingestion Bucket ARN
+    Value: !GetAtt KnowledgeBaseBucket.Arn
+
+  FormsIngestionBucketArn:
+     Description: Forms Ingestion Bucket ARN
+     Value: !GetAtt IngestFormsBucket.Arn
+
+  FormsIngestionBucketName:
+    Description: Forms Ingestion Bucket ARN
+    Value: !Ref IngestFormsBucket

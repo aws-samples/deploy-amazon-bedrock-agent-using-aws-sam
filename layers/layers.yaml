@@ -1,0 +1,53 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description:  This template manages Lambda Layers that are used by functions in this project
+
+Resources:
+  PowertoolsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: powertools
+      CompatibleRuntimes:
+        - python3.10
+        - python3.11
+        - python3.12
+    Metadata:
+      BuildMethod: makefile
+
+  ModelLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: model
+      CompatibleRuntimes:
+        - python3.12
+        - python3.11
+        - python3.10
+    Metadata:
+      BuildMethod: makefile
+
+  OpenSearchLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: opensearch
+      CompatibleRuntimes:
+        - python3.10
+        - python3.11
+        - python3.12
+    Metadata:
+      BuildMethod: makefile
+
+Outputs:
+  PowertoolsLayer:
+    Description: The ARN of the Powertools Layer
+    Value: !Ref PowertoolsLayer
+  ModelLayer:
+    Description: The ARN of the Model Layer
+    Value: !Ref ModelLayer
+  OpenSearchLayer:
+    Description: The ARN of the Model Layer
+    Value: !Ref OpenSearchLayer
+
+

@@ -1,0 +1,103 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Curiousdvisor
+
+  Sample SAM Template Bedrock Agent deployment
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 128
+    Tracing: Active
+    Runtime: python3.10
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
+        POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
+  Api:
+    TracingEnabled: true
+
+Resources:
+  LambdaLayers:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: layers/layers.yaml
+
+  Datastores:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: datastores/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+
+#  FormsIngestion:
+#    Type: AWS::Serverless::Application
+#    Properties:
+#      Location: forms/template.yaml
+#      Parameters:
+#        DynamoDBTable: !GetAtt Datastores.Outputs.DynamoDBTable
+#        PowertoolsLayer: !GetAtt LambdaLayers.Outputs.PowertoolsLayer
+#        ModelLayer: !GetAtt LambdaLayers.Outputs.ModelLayer
+#        FormsIngestionBucketArn: !GetAtt Datastores.Outputs.FormsIngestionBucketArn
+#        FormsIngestionBucketName: !GetAtt Datastores.Outputs.FormsIngestionBucketName
+
+  KnowledgeBase:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: knowledgebase/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+        OpenSearchLayer: !GetAtt LambdaLayers.Outputs.OpenSearchLayer
+        KnowledgeBaseBucketArn: !GetAtt Datastores.Outputs.KnowledgeBaseBucketArn
+
+  Agent:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: agent/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+        KnowledgeBase: !GetAtt KnowledgeBase.Outputs.KnowledgeBaseId
+        ModelLayer: !GetAtt LambdaLayers.Outputs.ModelLayer
+        PowertoolsLayer: !GetAtt LambdaLayers.Outputs.PowertoolsLayer
+        DynamoDBTable: !GetAtt Datastores.Outputs.DynamoDBTable
+
+  SampleData:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: sample_data/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+        TableName: !GetAtt Datastores.Outputs.DynamoDBTable
+        BucketName: !GetAtt Datastores.Outputs.KnowledgeBaseBucketName
+        BucketArn: !GetAtt Datastores.Outputs.KnowledgeBaseBucketArn
+        ModelLayer: !GetAtt LambdaLayers.Outputs.ModelLayer
+        AgentId: !GetAtt Agent.Outputs.AgentId
+        AgentArn: !GetAtt Agent.Outputs.AgentArn
+        DataSourceId: !GetAtt KnowledgeBase.Outputs.DataSourceId
+        KnowledgeBaseId: !GetAtt KnowledgeBase.Outputs.KnowledgeBaseId
+        KnowledgeBaseArn: !GetAtt KnowledgeBase.Outputs.KnowledgeBaseArn
+
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+  ApplicationInsightsMonitoring:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'

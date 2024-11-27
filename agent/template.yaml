@@ -1,0 +1,484 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Amazon Bedrock Agent
+
+  Sample SAM Template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+  ModelLayer:
+    Type: String
+
+  PowertoolsLayer:
+    Type: String
+
+  KnowledgeBase:
+    Type: String
+
+  DynamoDBTable:
+    Type: String
+
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 128
+    Tracing: Active
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
+        POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
+  Api:
+    TracingEnabled: true
+
+Resources:
+  ParkReservationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: functions/park_reservation/
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref ModelLayer
+        - !Ref PowertoolsLayer
+      Environment:
+        Variables:
+          DDB_TABLE: !Ref DynamoDBTable
+
+  AgentFunctionsForParksRoleBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ParkReservationHandler
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${Agent}"
+
+  TrashHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: functions/garbage/
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref ModelLayer
+        - !Ref PowertoolsLayer
+      Environment:
+        Variables:
+          DDB_TABLE: !Ref DynamoDBTable
+
+  AgentFunctionsForTrashRoleBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TrashHandler
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${Agent}"
+
+  FormsHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: functions/forms/
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref ModelLayer
+        - !Ref PowertoolsLayer
+      Environment:
+        Variables:
+          DDB_TABLE: !Ref DynamoDBTable
+
+  AgentFunctionsForFormsRoleBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FormsHandler
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${Agent}"
+
+  AgentFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:PutItem
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoDBTable}"
+
+  AmazonBedrockExecutionRoleForAgents:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+            Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/Admin"
+            Action: sts:AssumeRole
+      Description: A role for the Advisor agent
+      Path: /service-role/
+      Policies:
+        - PolicyName: InvokeTrashHandler
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt TrashHandler.Arn
+        - PolicyName: InvokeParkReservationHandler
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt ParkReservationHandler.Arn
+        - PolicyName: BedrockModelAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "bedrock:ApplyGuardrail"
+                  - "bedrock:List*"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "bedrock:GetAgentVersion"
+                  - "bedrock:GetAgentAlias"
+                  - "bedrock:GetAgentMemory"
+                  - "bedrock:GetAgent"
+                  - "bedrock:GetAgentActionGroup"
+                  - "bedrock:GetAgentKnowledgeBase"
+                  - "bedrock:ListAgentVersions"
+                  - "bedrock:InvokeAgent"
+                  - "bedrock:ListAgentActionGroups"
+                  - "bedrock:ListAgentKnowledgeBases"
+                  - "bedrock:ListAgentAliases"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/city-assistant_${Environment}"
+              - Effect: Allow
+                Action:
+                  - "bedrock:GetGuardrail"
+                  - "bedrock:ApplyGuardrail"
+                  - "bedrock:ListGuardrails"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/Guardrails_${Environment}"
+              - Effect: Allow
+                Action:
+                  - "bedrock:GetKnowledgeBase"
+                  - "bedrock:Retrieve"
+                  - "bedrock:RetrieveAndGenerate"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/knowledgebase-agents-with-sam-${AWS::AccountId}-${AWS::Region}-${Environment}"
+              - Effect: Allow
+                Action:
+                  - "bedrock:InvokeModel"
+                  - "bedrock:InvokeModelWithResponseStream"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
+        - PolicyName: OpenSearchServerlessAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                  - aoss:DashboardAccessAll
+#                  - aoss:*
+                Resource:
+                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${Environment}"
+              - Effect: Allow
+                Action:
+                  - aoss:CreateIndex
+                  - aoss:DeleteIndex
+                  - aoss:UpdateIndex
+                  - aoss:DescribeIndex
+                  - aoss:ReadDocument
+                  - aoss:WriteDocument
+#                  - aoss:*
+                Resource:
+                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:*"
+      RoleName: !Sub "AmazonBedrockExecutionRoleForAgents_${Environment}"
+
+  AgentGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: !Sub "Guardrails_${Environment}"
+      Description: Guardrails based on responsible AI policies
+      BlockedInputMessaging: The input contains blocked content
+      BlockedOutputsMessaging: The system returned an invalid response
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+#          - Type: ADDRESS
+#            Action: ANONYMIZE
+#          - Type: NAME
+#            Action: ANONYMIZE
+#          - Type: EMAIL
+#            Action: ANONYMIZE
+#          - Type: PHONE
+#            Action: ANONYMIZE
+          - Type: CREDIT_DEBIT_CARD_NUMBER
+            Action: BLOCK
+          - Type: US_SOCIAL_SECURITY_NUMBER
+            Action: BLOCK
+        RegexesConfig:
+          - Name: BlockStudentId
+            Description: Anonymize student ID's
+            Action: ANONYMIZE
+            Pattern: "SID\\d.*"
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Name: BlockMedicalAdvice
+            Type: DENY
+            Definition: This policy blocks medical advice
+            Examples:
+              - It sounds like you have Posterior Tibial Tendon Dysfunction and need to do some stretches
+          - Name: BlockLegalAdvice
+            Type: DENY
+            Definition: This policy blocks legal advice
+            Examples:
+              - You have a good case and should pursue legal action.
+              - You should incorporate to shield your personal assets
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+        WordsConfig:
+          - Text: dang
+          - Text: doodles
+
+  MainGuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Properties:
+      Description: A sample description of this guardrail version
+      GuardrailIdentifier: !GetAtt AgentGuardrail.GuardrailId
+
+  Agent:
+    Type: AWS::Bedrock::Agent
+    Properties:
+      AgentName: !Sub "city-assistant_${Environment}"
+      AgentResourceRoleArn: !GetAtt AmazonBedrockExecutionRoleForAgents.Arn
+      Description: "Agent for providing citizen assistance at AnyCity"
+      IdleSessionTTLInSeconds: 600
+      KnowledgeBases:
+        - KnowledgeBaseId: !Ref KnowledgeBase
+          KnowledgeBaseState: ENABLED
+          Description: A knowledgebase of information about city resources and policies.
+      Instruction: |
+        You are an helpful agent, helping citizens at AnyCity to create park reservation, and check on garbage pickup 
+        dates.  You also have access to documentation about the city in your knowledge base.  Use the documentation to 
+        help answer questions.
+      FoundationModel: "anthropic.claude-3-sonnet-20240229-v1:0"
+      GuardrailConfiguration:
+        GuardrailIdentifier: !GetAtt AgentGuardrail.GuardrailId
+        GuardrailVersion: !GetAtt MainGuardrailVersion.Version
+      ActionGroups:
+        - ActionGroupName: ParkReservations
+          Description: "Use these tools to book park reservations and check availability"
+          ActionGroupExecutor:
+            Lambda: !GetAtt ParkReservationHandler.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: get_available_park_days
+                Description: |
+                  Check the available days for a specific park within a date range
+                Parameters:
+                  park_id:
+                    Description: "The ID of the park to check availability"
+                    Required: True
+                    Type: string
+                  start_date:
+                    Description: "The start date of the range you want to look for availability in (format: YYYY-MM-DD)"
+                    Required: True
+                    Type: string
+                  end_date:
+                    Description: "The end date of of the range you want to look for availability in (format: YYYY-MM-DD)"
+                    Required: True
+                    Type: string
+              - Name: book_park
+                Description: |
+                  Book a reservation for a park
+                Parameters:
+                  park_id:
+                    Description: "The ID of the park to reserve"
+                    Required: True
+                    Type: string
+                  citizen_id:
+                    Description: "The ID of the citizen to reserve the park for"
+                    Required: False
+                    Type: string
+                  reservation_date:
+                    Description: "The date of reservation (format: YYYY-MM-DD)"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GarbageRoutes
+          Description: "Bulk waste pickup scheduling and route information"
+          ActionGroupExecutor:
+            Lambda: !GetAtt TrashHandler.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: get_garbage_pickup_day
+                Description: |
+                  Get the available days for a specific park within a date range
+                Parameters:
+                  district_id:
+                    Description: "The ID of the district to get the bulk waste pickup day"
+                    Required: False
+                    Type: string
+              - Name: schedule_bulk_pickup
+                Description: |
+                  Schedule a bulk waste pickup
+                Parameters:
+                  citizen_id:
+                    Description: "The id of the citizen who is requesting the bulk waste pickup"
+                    Required: False
+                    Type: string
+                  garbage_route:
+                    Description: "The garbage route for the citizen's district"
+                    Required: True
+                    Type: string
+                  pickup_date:
+                    Description: "The date of requested pickup (format: YYYY-MM-DD)"
+                    Required: True
+                    Type: string
+#        - ActionGroupName: Forms
+#          Description: "View and submit forms to the city"
+#          ActionGroupExecutor:
+#            Lambda: !GetAtt FormsHandler.Arn
+#          ActionGroupState: ENABLED
+#          FunctionSchema:
+#            Functions:
+#              - Name: start_new_form
+#                Description: |
+#                  Start completing a new form using a given template
+#                Parameters:
+#                  form_template_id:
+#                    Description: "The ID of the form template you want to complete"
+#                    Required: True
+#                    Type: string
+#              - Name: get_form_fields
+#                Description: |
+#                  Get the fields for a form by form_id
+#                Parameters:
+#                  form_template_id:
+#                    Description: "Return fields for the form with a given form_template_id"
+#                    Required: True
+#                    Type: string
+#              - Name: update_form_field
+#                Description: |
+#                  Use this to update form fields with values that you get from the citizen
+#                Parameters:
+#                  form_template_id:
+#                    Description: "The id of the form template you want to complete"
+#                    Required: True
+#                    Type: string
+#                  citizen_id:
+#                    Description: "The id of the citizen who is completing the form"
+#                    Required: True
+#                    Type: string
+#                  form_version_id:
+#                    Description: "The id of the form version"
+#                    Required: True
+#                    Type: string
+#                  form_field_id:
+#                    Description: "The id of the field you want to update in the form"
+#                    Required: True
+#                    Type: string
+#                  form_field_value:
+#                    Description: "The new value for the field to update"
+#                    Required: True
+#                    Type: string
+#              - Name: submit_form
+#                Description: |
+#                  Submit a form that you have completed
+#                Parameters:
+#                  form_template_id:
+#                    Description: "The ID of the form template you want to complete"
+#                    Required: True
+#                    Type: string
+#                  citizen_id:
+#                    Description: "The ID of the citizen who is completing the form"
+#                    Required: True
+#                    Type: string
+#                  form_version_id:
+#                    Description: "The ID of the form version"
+#                    Required: True
+#                    Type: string
+
+  AgentAlias:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentAliasName: !Sub "AnyCityAgent-${Environment}"
+      AgentId: !GetAtt Agent.AgentId
+      Description: !Sub "AnyCityAgent ${Environment}"
+
+Outputs:
+  TableName:
+    Description: Table name for the dynamodb table
+    Value: !Ref DynamoDBTable
+
+  AgentId:
+    Description: Logical ID for the Amazon Bedrock Agent
+    Value: !Ref Agent
+
+  AgentArn:
+    Description: Logical ID for the Amazon Bedrock Agent
+    Value: !GetAtt Agent.AgentArn
+
+  AgentAlias:
+    Description: Alias of the AnyCityAgent
+    Value: !Ref AgentAlias
