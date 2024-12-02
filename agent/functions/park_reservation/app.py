@@ -76,6 +76,7 @@ def lambda_handler(event, context):
     actionGroup = event['actionGroup']
     function = event['function']
     parameters = event.get('parameters', [])
+    session_attributes = event.get('sessionAttributes', {})
     responseBody = {
         "TEXT": {
             "body": "Error, no function was called"
@@ -115,9 +116,10 @@ def lambda_handler(event, context):
             if param["name"] == "reservation_date":
                 reservation_date = param["value"]
 
-        session_citizen_id = session_attributes.get('citizenID', '')
-        if not session_citizen_id == '':
-            citizen_id = session_citizen_id # override with the session attributes if available
+        if 'citizenID' in session_attributes.keys():
+            session_citizen_id = session_attributes.get('citizenID', '')
+            if not session_citizen_id == '':
+                citizen_id = session_citizen_id # override with the session attributes if available
 
         if not all([citizen_id, park_id, reservation_date]):
             raise Exception("Missing mandatory parameters: citizen_id, park_id, reservation_date")

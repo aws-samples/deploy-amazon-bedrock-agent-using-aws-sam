@@ -36,6 +36,7 @@ def lambda_handler(event, context):
     actionGroup = event['actionGroup']
     function = event['function']
     parameters = event.get('parameters', [])
+    session_attributes = event.get('sessionAttributes', {})
     responseBody = {
         "TEXT": {
             "body": "Error, no function was called"
@@ -48,9 +49,10 @@ def lambda_handler(event, context):
             if param["name"] == "district_id":
                 district_id = param["value"]
 
-        session_district_id = session_attributes.get('districtID', '')
-        if not session_district_id == '':
-            district_id = session_district_id  # override with the session attributes if available
+        if 'districtID' in session_attributes.keys():
+            session_district_id = session_attributes.get('districtID', '')
+            if not session_district_id == '':
+                district_id = session_district_id  # override with the session attributes if available
 
         if not district_id:
             raise Exception("Missing mandatory parameter: district_id")

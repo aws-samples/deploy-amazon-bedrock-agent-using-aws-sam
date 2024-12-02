@@ -203,7 +203,8 @@ Resources:
                   - "bedrock:GetKnowledgeBase"
                   - "bedrock:Retrieve"
                   - "bedrock:RetrieveAndGenerate"
-                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/knowledgebase-agents-with-sam-${AWS::AccountId}-${AWS::Region}-${Environment}"
+#                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/knowledgebase-agents-with-sam-${AWS::AccountId}-${AWS::Region}-${Environment}"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBase}"
               - Effect: Allow
                 Action:
                   - "bedrock:InvokeModel"
