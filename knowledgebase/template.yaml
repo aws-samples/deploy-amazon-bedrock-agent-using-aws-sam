@@ -236,18 +236,8 @@ Resources:
                   - aoss:APIAccessAll
                   - aoss:DashboardAccessAll
                 Resource:
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${Environment}"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${Environment}/*"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${Environment}"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${Environment}/*"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${KnowledgeBaseSearchCollection.Id}"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/${KnowledgeBaseSearchCollection.Id}/*"
                   - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index/*"
                   - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:index"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/{KnowledgeBaseSearchCollection.Id}/*"
-#                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/{KnowledgeBaseSearchCollection.Id}"
-
 
   CreateOSSIndexForKnoweledgebaseFunction:
     Type: AWS::Serverless::Function
