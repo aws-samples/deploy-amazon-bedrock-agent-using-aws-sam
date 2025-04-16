@@ -86,6 +86,7 @@ Resources:
                   - s3:PutObject
                   - s3:PutObjectAcl
                   - s3:PutLifecycleConfiguration
+                  - s3:DeleteObject
                 Resource:
                   - !Sub "${BucketArn}"
                   - !Sub "${BucketArn}/*"
