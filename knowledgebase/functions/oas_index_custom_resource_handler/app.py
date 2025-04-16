@@ -77,7 +77,7 @@ def lambda_handler(event, context):
                 index=index_name,
                 body=json.dumps(index_settings)
             )
-            time.sleep(60)
+            time.sleep(120)
         elif action == "Delete":
             response = client.indices.delete(
                 index=index_name,
