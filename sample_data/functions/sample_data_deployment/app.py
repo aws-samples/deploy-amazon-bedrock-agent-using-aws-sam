@@ -40,7 +40,8 @@ def delete_samples_from_knowledgebase(s3_bucket):
             )
             print(response)
             print(f"Deleted file: {f}")
-        except:
+        except Exception as e:
+            print(f"Exception: {e}")
             print(f"Error deleting {f} - continuing")
 
     print(f"Uploads complete")
